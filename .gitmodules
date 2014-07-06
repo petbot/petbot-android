@@ -1,3 +1,3 @@
 [submodule "ijkplayer"]
 	path = ijkplayer
-	url = git@github.com:petbot/ijkplayer.git
+	url = https://github.com/petbot/ijkplayer

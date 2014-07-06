@@ -1,7 +1,7 @@
-if [[ -z "$ANDROID_SDK" ]] then
+if [ -z "$ANDROID_SDK" ]; then
 	echo Please set ANDROID_SDK correctly
 fi
-if [[ -z "$ANDROID_NDK" ]] then
+if [ -n "$ANDROID_NDK" ]; then
 	echo Please set ANDROID_NDK correctly
 fi
 

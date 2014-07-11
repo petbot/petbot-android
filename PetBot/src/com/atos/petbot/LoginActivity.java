@@ -14,10 +14,18 @@ import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.TargetApi;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.Dialog;
+import android.app.Fragment;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.support.v4.app.DialogFragment;
+import android.support.v4.app.FragmentActivity;
+import android.support.v4.app.FragmentTransaction;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -31,7 +39,7 @@ import android.widget.TextView;
  * Activity which displays a login screen to the user, offering registration as
  * well.
  */
-public class LoginActivity extends Activity {
+public class LoginActivity extends FragmentActivity {
 
 	/**
 	 * The default email to populate the email field with.
@@ -202,6 +210,9 @@ public class LoginActivity extends Activity {
 	 * the user.
 	 */
 	public class UserLoginTask extends AsyncTask<Void, Void, Boolean> {
+		
+		private boolean has_error = false;
+		
 		@Override
 		protected Boolean doInBackground(Void... params) {
 			try{
@@ -252,6 +263,8 @@ public class LoginActivity extends Activity {
 
 				} catch (IOException e) {
 					e.printStackTrace();
+					has_error = true;
+					return false;
 				} catch (JSONException e) {
 					e.printStackTrace();
 				}
@@ -267,6 +280,10 @@ public class LoginActivity extends Activity {
 
 			if (success) {
 				finish();
+			} else if(has_error){
+				has_error = false;
+				DialogFragment error_dialog = new ErrorDialog();
+				error_dialog.show(getSupportFragmentManager(), "error");
 			} else {
 				mPasswordView
 						.setError(getString(R.string.error_incorrect_password));
@@ -278,6 +295,23 @@ public class LoginActivity extends Activity {
 		protected void onCancelled() {
 			mAuthTask = null;
 			showProgress(false);
+		}
+	}
+	
+	public static class ErrorDialog extends DialogFragment {
+		
+		@Override
+	    public Dialog onCreateDialog(Bundle savedInstanceState) {
+			// Use the Builder class for convenient dialog construction
+	        AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
+	        builder.setMessage("Problem connecting to server.");
+	        
+	        
+	        builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+	        	public void onClick(DialogInterface dialog, int id) {}
+	        });
+	        
+	        return builder.create();
 		}
 	}
 }

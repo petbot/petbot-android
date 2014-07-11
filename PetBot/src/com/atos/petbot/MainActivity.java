@@ -17,8 +17,17 @@ import com.atos.petbot.xmlrpc.XmlRpcHttpCookieTransportFactory;
 
 import android.support.v7.app.ActionBarActivity;
 import android.support.v7.app.ActionBar;
+import android.support.v4.app.DialogFragment;
 import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentTransaction;
+import android.app.AlertDialog;
+import android.app.Dialog;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.res.Configuration;
+import android.media.AudioManager;
+import android.media.SoundPool;
+import android.media.SoundPool.OnLoadCompleteListener;
 import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
@@ -29,16 +38,21 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.os.Build;
 import tv.danmaku.ijk.media.player.IMediaPlayer;
+import tv.danmaku.ijk.media.player.IMediaPlayer.OnBufferingUpdateListener;
 import tv.danmaku.ijk.media.player.IMediaPlayer.OnErrorListener;
+import tv.danmaku.ijk.media.player.IMediaPlayer.OnInfoListener;
 import tv.danmaku.ijk.media.widget.MediaController;
 import tv.danmaku.ijk.media.widget.VideoView;
 
-public class MainActivity extends ActionBarActivity {
+public class MainActivity extends ActionBarActivity implements DeviceNotFoundDialog.NoticeDialogListener {
 
 	private VideoView video_player;
 	private View buffering_indicator;
-	private MediaController media_controller;
 	private String stream_uri = "";
+	
+	private SoundPool sound_pool;
+	private boolean loaded = false;
+	private int soundID;
 	
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,17 +64,33 @@ public class MainActivity extends ActionBarActivity {
 		CookieHandler.setDefault(cookie_manager);
 
 		buffering_indicator = findViewById(R.id.buffering_indicator);
-		media_controller = new MediaController(this);
 		
 		video_player = (VideoView) findViewById(R.id.video_view);
-		video_player.setMediaController(media_controller);
 		video_player.setMediaBufferingIndicator(buffering_indicator);
 		video_player.setOnErrorListener(mErrorListener);
+		//video_player.setOnBufferingUpdateListener(mBufferListener);
+		video_player.setOnInfoListener(mInfoListener);
 		
-		Intent login_activity = new Intent(this, LoginActivity.class);
-		startActivityForResult(login_activity, 0);
+		sound_pool = new SoundPool(10, AudioManager.STREAM_MUSIC, 0);
+	    sound_pool.setOnLoadCompleteListener(new OnLoadCompleteListener() {
+	      @Override
+	      public void onLoadComplete(SoundPool soundPool, int sampleId,
+	          int status) {
+	        loaded = true;
+	      }
+	    });
+	    soundID = sound_pool.load(this, R.raw.mpu, 1);
+		
+		login();
     }
 
+    private void login(){
+    	CookieManager manager = (CookieManager) CookieManager.getDefault();
+    	manager.getCookieStore().removeAll();
+    	Intent login_activity = new Intent(this, LoginActivity.class);
+		startActivityForResult(login_activity, 0);
+    }
+    
     @Override
 	protected void onActivityResult(int request_code, int result_code, Intent data) {
 		String auth_token = data.getStringExtra("auth_token");
@@ -140,7 +170,12 @@ public class MainActivity extends ActionBarActivity {
 							});
 						}
 					} catch (XmlRpcException e) {
+						FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
+						DialogFragment not_found_dialog = new DeviceNotFoundDialog();
+						ft.add(not_found_dialog, "not found");
+						ft.commitAllowingStateLoss();
 						e.printStackTrace();
+						break;
 					}
 
 					try {
@@ -188,6 +223,52 @@ public class MainActivity extends ActionBarActivity {
     	}).start();
     }
 
+    public void playSound(View view){
+    	new Thread(new Runnable() {
+			public void run() {
+				
+				XmlRpcClientConfigImpl config = new XmlRpcClientConfigImpl();
+				try {
+					config.setServerURL(new URL(ServerInfo.url + "/relay"));
+				} catch (MalformedURLException e) {
+					e.printStackTrace();
+				}
+				
+				XmlRpcClient client = new XmlRpcClient();
+				client.setTransportFactory(new XmlRpcHttpCookieTransportFactory(client));
+				client.setConfig(config);
+				Boolean result = false;
+				
+				try {
+					
+					result = (Boolean) client.execute("playSound", new Object[]{"8"});
+					Log.i("??? SOUND ???", " " + result);
+					
+				} catch (XmlRpcException e) {
+					e.printStackTrace();
+				}
+
+				try {
+					Thread.sleep(5000);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+    	}).start();
+    	
+		AudioManager audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+		float actualVolume = (float) audioManager
+		    .getStreamVolume(AudioManager.STREAM_MUSIC);
+		float maxVolume = (float) audioManager
+		    .getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+		float volume = actualVolume / maxVolume;
+		// Is the sound loaded already?
+		if (loaded) {
+			sound_pool.play(soundID, volume, volume, 1, 0, 1f);
+			Log.e("Test", "Played sound");
+		}
+    }
+    
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         
@@ -210,8 +291,42 @@ public class MainActivity extends ActionBarActivity {
 
     private OnErrorListener mErrorListener = new OnErrorListener(){
     	public boolean onError(IMediaPlayer mp, int framework_err, int impl_err) {
-    		Log.i("asdfasdfasdf", "whoawhoawhaowhaowhao");
+    		Log.i("asdfasdfasdf", "ERROR LISTENER");
     		return true;
     	}
     };
+    
+    private OnBufferingUpdateListener mBufferListener = new OnBufferingUpdateListener(){
+    	public void onBufferingUpdate(IMediaPlayer mp, int percent) {
+    		Log.i("asdfasdfasdf", "BUFFER LISTENER");
+    	}
+    };
+    
+    private OnInfoListener mInfoListener = new OnInfoListener() {
+        @Override
+        public boolean onInfo(IMediaPlayer mp, int what, int extra) {
+            Log.i("asdfasdfasdf", "onInfo: (" + what + "," + extra + ")");
+
+            if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_START) {
+                Log.i("asdfasdfasdf", "onInfo: (MEDIA_INFO_BUFFERING_START)");
+                video_player.stopPlayback();
+                stream_uri = "";
+            } else if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_END) {
+                Log.i("asdfasdfasdf", "onInfo: (MEDIA_INFO_BUFFERING_END)");
+            }
+
+            return true;
+        }
+    };
+
+	@Override
+	public void onDialogPositiveClick(DialogFragment dialog) {
+		startVideo();
+	}
+
+	@Override
+	public void onDialogNegativeClick(DialogFragment dialog) {
+		login();
+	}
+    
 }

@@ -183,6 +183,13 @@ public class MainActivity extends FragmentActivity implements DeviceNotFoundDial
 						ft.commitAllowingStateLoss();
 						e.printStackTrace();
 						break;
+					} catch (IndexOutOfBoundsException e) {
+						FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
+						DialogFragment not_found_dialog = new DeviceNotFoundDialog();
+						ft.add(not_found_dialog, "please try again");
+						ft.commitAllowingStateLoss();
+						e.printStackTrace();
+						break;
 					}
 
 					try {

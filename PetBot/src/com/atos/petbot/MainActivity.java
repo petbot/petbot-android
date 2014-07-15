@@ -82,6 +82,8 @@ public class MainActivity extends FragmentActivity implements DeviceNotFoundDial
 	        loaded = true;
 	      }
 	    });
+
+  	  Log.e("Test", "sound loading...");
 	    soundID = sound_pool.load(this, R.raw.mpu, 1);
 		
 		login();

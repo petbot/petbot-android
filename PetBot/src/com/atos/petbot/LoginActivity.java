@@ -19,6 +19,7 @@ import android.app.Dialog;
 import android.app.Fragment;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.os.AsyncTask;
 import android.os.Build;
@@ -32,6 +33,9 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.CompoundButton.OnCheckedChangeListener;
 import android.widget.EditText;
 import android.widget.TextView;
 
@@ -63,6 +67,15 @@ public class LoginActivity extends FragmentActivity {
 	private View mLoginFormView;
 	private View mLoginStatusView;
 	private TextView mLoginStatusMessageView;
+	
+	public boolean remember_me=false;
+	
+	public static final String PREFS_NAME = "PetBotProfile";
+	public static final String PREFS_USER = "prefsUsername";
+	public static final String PREFS__PASS = "prefsPassword";
+	public static final String PREFS_REMEBER = "prefsRemember";
+	public String username;
+	public String upass;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -100,6 +113,40 @@ public class LoginActivity extends FragmentActivity {
 						attemptLogin();
 					}
 				});
+
+		
+		SharedPreferences pref = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+		String saved_email = pref.getString(PREFS_USER, "");
+		String saved_password = pref.getString(PREFS__PASS, "");
+		remember_me = pref.getBoolean(PREFS_REMEBER, false);
+
+		Log.i("INNNNNN; ", "SAVED");
+		Log.i("INNNNNN; ", saved_email);
+		Log.i("INNNNNN; ", saved_password);
+		Log.i("INNNNNN; ", remember_me ? "TRUE" : "FALSE");
+		if (remember_me && saved_email!="") {
+			mEmail=saved_email;
+			mEmailView.setText(mEmail);
+			mPassword=saved_password;
+			mPasswordView.setText(mPassword);
+		}
+		
+		
+		
+		CheckBox cb = (CheckBox) findViewById(R.id.rememberMeCheckBox);
+		cb.setChecked(remember_me);
+		cb.setOnCheckedChangeListener(new OnCheckedChangeListener() {
+			@Override
+			public void onCheckedChanged(CompoundButton button, boolean arg1) {
+				if (button.isChecked()) {
+					remember_me=true;
+				} else {
+					remember_me=false;
+				}
+				getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putBoolean(PREFS_REMEBER, remember_me).commit();
+			}
+			
+		});
 	}
 
 	@Override
@@ -256,6 +303,9 @@ public class LoginActivity extends FragmentActivity {
 					Intent result = new Intent();
 					result.putExtra("auth_token", auth_token);
 					setResult(RESULT_OK, result);
+					
+					
+					getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putString(PREFS_USER, mEmail).putString(PREFS__PASS, mPassword).putBoolean(PREFS_REMEBER, remember_me).commit();
 
 					return true;
 

@@ -41,6 +41,8 @@ import android.widget.TextView;
  */
 public class LoginActivity extends FragmentActivity {
 
+
+	
 	/**
 	 * The default email to populate the email field with.
 	 */

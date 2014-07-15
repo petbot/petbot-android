@@ -19,7 +19,9 @@ import android.support.v7.app.ActionBarActivity;
 import android.support.v7.app.ActionBar;
 import android.support.v4.app.DialogFragment;
 import android.support.v4.app.Fragment;
+import android.support.v4.app.FragmentActivity;
 import android.support.v4.app.FragmentTransaction;
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.DialogInterface;
@@ -44,7 +46,7 @@ import tv.danmaku.ijk.media.player.IMediaPlayer.OnInfoListener;
 import tv.danmaku.ijk.media.widget.MediaController;
 import tv.danmaku.ijk.media.widget.VideoView;
 
-public class MainActivity extends ActionBarActivity implements DeviceNotFoundDialog.NoticeDialogListener {
+public class MainActivity extends FragmentActivity implements DeviceNotFoundDialog.NoticeDialogListener {
 
 	private VideoView video_player;
 	private View buffering_indicator;
@@ -67,6 +69,7 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 		
 		video_player = (VideoView) findViewById(R.id.video_view);
 		video_player.setMediaBufferingIndicator(buffering_indicator);
+	
 		video_player.setOnErrorListener(mErrorListener);
 		//video_player.setOnBufferingUpdateListener(mBufferListener);
 		video_player.setOnInfoListener(mInfoListener);
@@ -93,6 +96,10 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
     
     @Override
 	protected void onActivityResult(int request_code, int result_code, Intent data) {
+    	if (data==null) {
+    		finish();
+    		return;
+    	}
 		String auth_token = data.getStringExtra("auth_token");
 		Log.i("!!!!!! ", auth_token);
 

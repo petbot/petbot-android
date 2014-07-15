@@ -2,30 +2,18 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    tools:context=".PlayerActivity" >
+    tools:context=".PlayerActivity" xmlns:app="http://schemas.android.com/apk/res/com.atos.petbot">
 
     <tv.danmaku.ijk.media.widget.VideoView
         android:id="@+id/video_view"
         android:layout_width="fill_parent"
         android:layout_height="fill_parent"
         android:layout_gravity="center" />
-
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+    
+        <LinearLayout
+        android:layout_width="137dp"
+        android:layout_height="match_parent"
         android:orientation="vertical" >
-
-        <Button
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:onClick="dropTreat"
-            android:text="cookie" />
-        
-        <Button
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:onClick="playSound"
-            android:text="sound" />
     </LinearLayout>
     
     <LinearLayout
@@ -58,4 +46,34 @@
             android:layout_height="60dip" />
     </LinearLayout>
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="72dp" >
+
+        <Button
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:onClick="dropTreat"
+            android:text="cookie"
+            android:textSize="25sp" />
+
+        <android.support.v7.widget.Space
+            android:id="@+id/space2"
+            android:layout_width="0dp"
+            android:layout_weight="2"
+            android:layout_height="wrap_content" />
+
+        <Button
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:onClick="playSound"
+            android:text="sound"
+            android:textSize="25sp" />
+
+    </LinearLayout>
+
+    
+    
 </FrameLayout>

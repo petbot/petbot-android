@@ -148,6 +148,7 @@ public class MainActivity extends FragmentActivity implements DeviceNotFoundDial
 						
 						Map<String,String> info = (Map<String,String>) result[1];
 						String new_stream_uri = info.get("rtsp");
+						//String new_stream_uri = info.get("rtmp");
 						if(new_stream_uri == null || new_stream_uri.isEmpty()){
 							
 							Log.i("?????? RESULT; ", "4 " + info.toString());

@@ -1,66 +1,85 @@
 package com.atos.petbot;
 
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.CookieHandler;
 import java.net.CookieManager;
 import java.net.CookieStore;
 import java.net.HttpCookie;
 import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.util.List;
 import java.util.Map;
+
+import javax.net.ssl.HttpsURLConnection;
 
 import org.apache.xmlrpc.XmlRpcException;
 import org.apache.xmlrpc.client.XmlRpcClient;
 import org.apache.xmlrpc.client.XmlRpcClientConfigImpl;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import com.atos.petbot.xmlrpc.XmlRpcHttpCookieTransportFactory;
 
 import android.support.v7.app.ActionBarActivity;
-import android.support.v7.app.ActionBar;
 import android.support.v4.app.DialogFragment;
-import android.support.v4.app.Fragment;
-import android.support.v4.app.FragmentActivity;
 import android.support.v4.app.FragmentTransaction;
-import android.app.Activity;
-import android.app.AlertDialog;
-import android.app.Dialog;
-import android.content.DialogInterface;
+import android.accounts.Account;
+import android.accounts.AccountManager;
+import android.content.Context;
 import android.content.Intent;
-import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.Bitmap.CompressFormat;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
 import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.media.MediaPlayer.OnPreparedListener;
 import android.media.SoundPool;
 import android.media.SoundPool.OnLoadCompleteListener;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.MediaStore;
 import android.util.Log;
-import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.SubMenu;
 import android.view.View;
-import android.view.ViewGroup;
-import android.os.Build;
 import tv.danmaku.ijk.media.player.IMediaPlayer;
 import tv.danmaku.ijk.media.player.IMediaPlayer.OnBufferingUpdateListener;
 import tv.danmaku.ijk.media.player.IMediaPlayer.OnErrorListener;
 import tv.danmaku.ijk.media.player.IMediaPlayer.OnInfoListener;
-import tv.danmaku.ijk.media.widget.MediaController;
 import tv.danmaku.ijk.media.widget.VideoView;
 
-public class MainActivity extends FragmentActivity implements DeviceNotFoundDialog.NoticeDialogListener {
+public class MainActivity extends ActionBarActivity implements DeviceNotFoundDialog.NoticeDialogListener {
 
+	private Menu menu;
+	private MediaPlayer media_player = new MediaPlayer();
+	
 	private VideoView video_player;
 	private View buffering_indicator;
 	private String stream_uri = "";
-	
-	private SoundPool sound_pool;
-	private boolean loaded = false;
-	private int soundID;
+
+	private XmlRpcClient rpc_client;
 	
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         
     	super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        
+        getActionBar().setBackgroundDrawable(new ColorDrawable(Color.parseColor("#80000000")));
         
         CookieManager cookie_manager = new CookieManager();
 		CookieHandler.setDefault(cookie_manager);
@@ -73,85 +92,60 @@ public class MainActivity extends FragmentActivity implements DeviceNotFoundDial
 		video_player.setOnErrorListener(mErrorListener);
 		//video_player.setOnBufferingUpdateListener(mBufferListener);
 		video_player.setOnInfoListener(mInfoListener);
-		
-		sound_pool = new SoundPool(10, AudioManager.STREAM_MUSIC, 0);
-	    sound_pool.setOnLoadCompleteListener(new OnLoadCompleteListener() {
-	      @Override
-	      public void onLoadComplete(SoundPool soundPool, int sampleId,
-	          int status) {
-	        loaded = true;
-	      }
-	    });
-
-  	  Log.e("Test", "sound loading...");
-	    soundID = sound_pool.load(this, R.raw.mpu, 1);
-		
+		video_player.setDrawingCacheEnabled(true);
+	    XmlRpcClientConfigImpl config = new XmlRpcClientConfigImpl();
+		try {
+			config.setServerURL(new URL(ServerInfo.url + "/relay"));
+		} catch (MalformedURLException e) {
+			e.printStackTrace();
+		}
+	    rpc_client = new XmlRpcClient();
+		rpc_client.setTransportFactory(new XmlRpcHttpCookieTransportFactory(rpc_client));
+		rpc_client.setConfig(config);
+	    
 		login();
     }
 
     private void login(){
-    	CookieManager manager = (CookieManager) CookieManager.getDefault();
-    	manager.getCookieStore().removeAll();
-    	Intent login_activity = new Intent(this, LoginActivity.class);
-		startActivityForResult(login_activity, 0);
-    }
-    
-    @Override
-	protected void onActivityResult(int request_code, int result_code, Intent data) {
-    	if (data==null) {
-    		finish();
-    		return;
+    	
+    	final AccountManager account_manager = AccountManager.get(this);
+    	final Account[] accounts = account_manager.getAccountsByType("com.atos.petbot");
+    	if(accounts.length > 0){
+    		account_manager.getAuthToken(accounts[0], "", null, this, null, null);
+    		new Thread(new Runnable(){
+    			public void run(){
+    				ServerInfo.login(accounts[0].name, account_manager.getPassword(accounts[0]));
+    				runOnUiThread(new Runnable(){
+    					public void run(){
+    						startVideo();
+    						getSounds();
+    					}
+    				});
+    			}
+    		}).start();
+    	} else {
+    		account_manager.addAccount("com.atos.petbot", "", null, null, this, null, null);
+    		startVideo();
     	}
-		String auth_token = data.getStringExtra("auth_token");
-		Log.i("!!!!!! ", auth_token);
+    	
+    }
 
-		CookieManager manager = (CookieManager) CookieManager.getDefault();
-		CookieStore cookieJar =  manager.getCookieStore();
-		List<HttpCookie> cookies = cookieJar.getCookies();
-		for (HttpCookie cookie: cookies) {
-			Log.i("CookieHandler retrieved cookie: ", cookie.toString());
-		}
-		
-		startVideo();
-	}
     
     public void startVideo(){
-
-		Log.i("INNNNNN; ", "VideoView Activity???");
+    	
 		new Thread(new Runnable() {
 			public void run() {
 
+				Object[] result = null;
+				
 				while(true) {
-
-					Log.i("?????? RESULT; ", "starting command");
-					XmlRpcClientConfigImpl config = new XmlRpcClientConfigImpl();
-					try {
-						config.setServerURL(new URL(ServerInfo.url + "/relay"));
-					} catch (MalformedURLException e) {
-						e.printStackTrace();
-					}
-					
-					Log.i("?????? RESULT; ", "1");
-					
-					XmlRpcClient client = new XmlRpcClient();
-					client.setTransportFactory(new XmlRpcHttpCookieTransportFactory(client));
-					client.setConfig(config);
-					Object[] result = null;
-					
-					Log.i("?????? RESULT; ", "2");
-					
 					try {
 						
-						result = (Object[]) client.execute("streamVideo", new Object[]{});
-						
-						Log.i("?????? RESULT; ", "3");
+						result = (Object[]) rpc_client.execute("streamVideo", new Object[]{});
 						
 						Map<String,String> info = (Map<String,String>) result[1];
 						String new_stream_uri = info.get("rtsp");
-						//String new_stream_uri = info.get("rtmp");
 						if(new_stream_uri == null || new_stream_uri.isEmpty()){
-							
-							Log.i("?????? RESULT; ", "4 " + info.toString());
 							
 							try {
 								Thread.sleep(5000);
@@ -162,19 +156,13 @@ public class MainActivity extends FragmentActivity implements DeviceNotFoundDial
 						}
 						
 						if (!stream_uri.equals(new_stream_uri)) {
+							
 							stream_uri = new_stream_uri;
-							Log.i("asdfasdfasdf", "URI: " + new_stream_uri);
-							Log.i("asdfasdfasdf", "URI: " + stream_uri);
 							runOnUiThread(new Runnable() {
 								@Override
-								public void run() {
-									
-									Log.i("??? FOO ???", "STOP");
+								public void run() {				
 									video_player.stopPlayback();
-										
-									Log.i("??? FOO ???", "SET");
 									video_player.setVideoPath(stream_uri);
-									Log.i("??? FOO ???", "START");
 									video_player.start();
 								}
 							});
@@ -187,11 +175,11 @@ public class MainActivity extends FragmentActivity implements DeviceNotFoundDial
 						e.printStackTrace();
 						break;
 					} catch (IndexOutOfBoundsException e) {
-						/*FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
+						FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
 						DialogFragment not_found_dialog = new DeviceNotFoundDialog();
 						ft.add(not_found_dialog, "please try again");
 						ft.commitAllowingStateLoss();
-						e.printStackTrace();*/
+						e.printStackTrace();
 						break;
 					}
 
@@ -206,84 +194,92 @@ public class MainActivity extends FragmentActivity implements DeviceNotFoundDial
 		}).start();
 	}
     
-    public void dropTreat(View view){
+    public void dropTreat(){
     	new Thread(new Runnable() {
 			public void run() {
 				
-				XmlRpcClientConfigImpl config = new XmlRpcClientConfigImpl();
 				try {
-					config.setServerURL(new URL(ServerInfo.url + "/relay"));
-				} catch (MalformedURLException e) {
-					e.printStackTrace();
-				}
-				
-				XmlRpcClient client = new XmlRpcClient();
-				client.setTransportFactory(new XmlRpcHttpCookieTransportFactory(client));
-				client.setConfig(config);
-				Boolean result = false;
-				
-				try {
-					
-					result = (Boolean) client.execute("sendCookie", new Object[]{});
-					Log.i("??? treat ???", " " + result);
-					
+					Boolean result = false;
+					result = (Boolean) rpc_client.execute("sendCookie", new Object[]{});
+					Log.i("??? treat ???", " " + result);					
 				} catch (XmlRpcException e) {
-					e.printStackTrace();
-				}
-
-				try {
-					Thread.sleep(5000);
-				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
 			}
     	}).start();
     }
+    
+    public void getSounds(){
+    	new Thread(new Runnable() {
+			public void run() {			
+				try{
+					URL server = new URL(ServerInfo.url + "/list_sounds");
+					HttpsURLConnection connection = (HttpsURLConnection) server.openConnection();
+					connection.setRequestMethod("GET");
+					connection.setRequestProperty("Accept", "application/json");
+					connection.setRequestProperty("Content-Type", "application/json");
+	
+					BufferedReader in_stream = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+					StringBuilder response = new StringBuilder();
+					String line = null;
+					while ((line = in_stream.readLine()) != null) {
+						response.append(line);
+					}
+	
+					SubMenu sounds_menu = menu.findItem(R.id.action_sound).getSubMenu();
+					JSONArray sounds_list = (new JSONObject(response.toString())).getJSONObject("result").getJSONArray("sounds");
+					for(int index = 0; index < sounds_list.length(); index++){
+						sounds_menu.add(R.id.sounds, Menu.NONE, Menu.NONE, sounds_list.getString(index));
+					}
+					
+				} catch(Exception exc){
+					exc.printStackTrace();
+				}
+			}
+        }).start();
+    }
+    
+    public void playSound(final String sound_name){
 
-    public void playSound(View view){
     	new Thread(new Runnable() {
 			public void run() {
-				
-				XmlRpcClientConfigImpl config = new XmlRpcClientConfigImpl();
-				try {
-					config.setServerURL(new URL(ServerInfo.url + "/relay"));
-				} catch (MalformedURLException e) {
-					e.printStackTrace();
-				}
-				
-				XmlRpcClient client = new XmlRpcClient();
-				client.setTransportFactory(new XmlRpcHttpCookieTransportFactory(client));
-				client.setConfig(config);
-				Boolean result = false;
-				
-				try {
-					
-					result = (Boolean) client.execute("playSound", new Object[]{"8"});
-					Log.i("??? SOUND ???", " " + result);
-					
-				} catch (XmlRpcException e) {
-					e.printStackTrace();
-				}
+		    	try {
+		    		URL server = new URL(ServerInfo.url + "/get_sound/" + sound_name);
+		    		HttpsURLConnection connection = (HttpsURLConnection) server.openConnection();
+		    		connection.setRequestMethod("GET");
+		    		
+		    		/*CookieManager manager = (CookieManager) CookieManager.getDefault();
+					CookieStore cookieJar =  manager.getCookieStore();
 
-				try {
-					Thread.sleep(5000);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
+					List<HttpCookie> cookies = null;
+					cookies = cookieJar.getCookies();
+
+					connection.setRequestProperty("Cookie", cookies.get(0).toString());*/
+		    		InputStream in_stream = connection.getInputStream();
+		    		byte[] buffer = new byte[32000];
+
+		    		FileOutputStream sound_file = openFileOutput("sound.mp3", Context.MODE_PRIVATE);
+		    		//FileOutputStream sound_file = new FileOutputStream("sound.mp3");
+		    		int read;
+		    		while ((read = in_stream.read(buffer)) != -1) {
+		    			sound_file.write(buffer, 0, read);
+		    		}
+		    		sound_file.flush();
+		    		sound_file.close();
+		    		
+					//media_player.setDataSource(sound_file.getFD());
+		    		media_player.reset();
+		    		media_player.setAudioStreamType(AudioManager.STREAM_MUSIC);
+		    		media_player.setDataSource(getFileStreamPath("sound.mp3").getPath());
+					media_player.prepare();
+					media_player.start();
+					
+				} catch (IOException exc) {
+					// TODO Auto-generated catch block
+					exc.printStackTrace();
 				}
 			}
     	}).start();
-    	
-		AudioManager audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
-		float actualVolume = (float) audioManager
-		    .getStreamVolume(AudioManager.STREAM_MUSIC);
-		float maxVolume = (float) audioManager
-		    .getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-		float volume = actualVolume / maxVolume;
-		// Is the sound loaded already?
-		if (loaded) {
-			sound_pool.play(soundID, volume, volume, 1, 0, 1f);
-			Log.e("Test", "Played sound");
-		}
     }
     
     @Override
@@ -291,6 +287,8 @@ public class MainActivity extends FragmentActivity implements DeviceNotFoundDial
         
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.main, menu);
+        this.menu = menu;
+        
         return true;
     }
 
@@ -299,11 +297,39 @@ public class MainActivity extends FragmentActivity implements DeviceNotFoundDial
         // Handle action bar item clicks here. The action bar will
         // automatically handle clicks on the Home/Up button, so long
         // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
-        if (id == R.id.action_settings) {
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
+        
+    	if(item.getGroupId() == R.id.sounds){
+    		playSound(item.getTitle().toString());
+    		return true;
+    	}
+    	
+    	switch(item.getItemId()){
+    		case R.id.action_drop:
+    			dropTreat();
+    			return true;
+    		
+    		case R.id.action_picture:
+    			
+    			// grab the video frame and save as bitmap
+				ByteBuffer data = ByteBuffer.wrap(video_player.grabFrame());
+				Bitmap bitmap = Bitmap.createBitmap(video_player.getVideoWidth(), video_player.getVideoHeight(), Bitmap.Config.RGB_565);
+				bitmap.copyPixelsFromBuffer(data);
+				String image_url = MediaStore.Images.Media.insertImage(getContentResolver(), bitmap, "foo", "Thats a lot of bar.");
+				
+				// bring up intent to view and share the picture
+				Intent view_picture = new Intent();
+				view_picture.setAction(Intent.ACTION_VIEW);
+				view_picture.setDataAndType(Uri.parse(image_url), "image/*");
+				startActivity(view_picture);
+				
+    			return true;
+    			
+    		case R.id.action_sound:
+    			//playSound(null);
+    			return true;
+    		default:
+    			return super.onOptionsItemSelected(item);
+    	}
     }
 
     private OnErrorListener mErrorListener = new OnErrorListener(){

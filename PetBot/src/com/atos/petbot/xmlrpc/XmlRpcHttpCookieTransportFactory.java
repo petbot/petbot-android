@@ -57,7 +57,6 @@ public class XmlRpcHttpCookieTransportFactory extends XmlRpcSunHttpTransportFact
 				cookies = cookieJar.getCookies();
 
 				connection.setRequestProperty("Cookie", cookies.get(0).toString());
-				//CookieStore.applyCookies(this.connection, cookieStore);
 			}
 
 		};

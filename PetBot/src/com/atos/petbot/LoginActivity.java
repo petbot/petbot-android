@@ -10,12 +10,16 @@ import java.net.URL;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.accounts.Account;
+import android.accounts.AccountAuthenticatorActivity;
+import android.accounts.AccountManager;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.app.DialogFragment;
 import android.app.Fragment;
 import android.content.DialogInterface;
 import android.content.Intent;
@@ -24,7 +28,6 @@ import android.content.res.Configuration;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
-import android.support.v4.app.DialogFragment;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.app.FragmentTransaction;
 import android.text.TextUtils;
@@ -43,7 +46,7 @@ import android.widget.TextView;
  * Activity which displays a login screen to the user, offering registration as
  * well.
  */
-public class LoginActivity extends FragmentActivity {
+public class LoginActivity extends AccountAuthenticatorActivity {
 
 
 	
@@ -60,6 +63,7 @@ public class LoginActivity extends FragmentActivity {
 	// Values for email and password at the time of the login attempt.
 	private String mEmail;
 	private String mPassword;
+	private String mAuthToken;
 
 	// UI references.
 	private EditText mEmailView;
@@ -120,10 +124,6 @@ public class LoginActivity extends FragmentActivity {
 		String saved_password = pref.getString(PREFS__PASS, "");
 		remember_me = pref.getBoolean(PREFS_REMEBER, false);
 
-		Log.i("INNNNNN; ", "SAVED");
-		Log.i("INNNNNN; ", saved_email);
-		Log.i("INNNNNN; ", saved_password);
-		Log.i("INNNNNN; ", remember_me ? "TRUE" : "FALSE");
 		if (remember_me && saved_email!="") {
 			mEmail=saved_email;
 			mEmailView.setText(mEmail);
@@ -264,65 +264,14 @@ public class LoginActivity extends FragmentActivity {
 		
 		@Override
 		protected Boolean doInBackground(Void... params) {
-			try{
-				Log.i("INNNNNN; ", "Login Activity");
-				// encode login information
-				JSONObject login = new JSONObject();
-				login.put("email", mEmail);
-				login.put("password", mPassword);
-				String parameters = login.toString();
 
-				URL server = new URL(ServerInfo.url + "/login");
-				HttpURLConnection connection = (HttpURLConnection) server.openConnection();
-				connection.setRequestMethod("POST");
-				connection.setRequestProperty("Accept", "application/json");
-				connection.setRequestProperty("Content-Type", "application/json");
-				connection.setRequestProperty("Content-Length", String.valueOf(parameters.length()));
-
-				connection.setDoOutput(true);
-				DataOutputStream out_stream = new DataOutputStream(connection.getOutputStream());
-				out_stream.writeBytes(parameters);
-				out_stream.flush();
-				out_stream.close();
-
-
-				BufferedReader in_stream = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-				StringBuilder response = new StringBuilder();
-				String line = null;
-				while ((line = in_stream.readLine()) != null) {
-					response.append(line);
-				}
-
-				Log.i("??????", response.toString());
-				JSONObject login_response = new JSONObject(response.toString());
-				int response_code = login_response.getJSONObject("meta").getInt("code");
-				if(response_code == 200){
-
-					// return authentication token in result intent
-					String auth_token = login_response.getJSONObject("response").getJSONObject("user").getString("authentication_token");
-					Intent result = new Intent();
-					result.putExtra("auth_token", auth_token);
-					setResult(RESULT_OK, result);
-					
-					
-					getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit().putString(PREFS_USER, mEmail).putString(PREFS__PASS, mPassword).putBoolean(PREFS_REMEBER, remember_me).commit();
-
-					return true;
-
-				} else {
-					return false;
-				}
-
-				} catch (IOException e) {
-					e.printStackTrace();
-					has_error = true;
-					return false;
-				} catch (JSONException e) {
-					e.printStackTrace();
-				}
-
-	            // TODO: register the new account here.
-	            return true;
+			mAuthToken = ServerInfo.login(mEmail, mPassword);
+			
+			Intent result = new Intent();
+			result.putExtra("auth_token", mAuthToken);
+			setResult(RESULT_OK, result);
+			
+			return !mAuthToken.isEmpty();
 		}
 
 		@Override
@@ -331,14 +280,31 @@ public class LoginActivity extends FragmentActivity {
 			showProgress(false);
 
 			if (success) {
+				
+				String account_type = LoginActivity.this.getIntent().getStringExtra(AccountManager.KEY_ACCOUNT_TYPE);
+				String auth_token_type = LoginActivity.this.getIntent().getStringExtra(AccountManager.KEY_AUTHENTICATOR_TYPES);
+				
+				final Account account = new Account(mEmail, account_type);			
+				AccountManager account_manager = AccountManager.get(LoginActivity.this);
+				if(!account_manager.addAccountExplicitly(account, mPassword, null)){
+					account_manager.setPassword(account, mPassword);
+				}
+		        account_manager.setAuthToken(account, auth_token_type, mAuthToken);
+				
+				Intent response = new Intent();
+				response.putExtra(AccountManager.KEY_ACCOUNT_NAME, mEmail);
+				response.putExtra(AccountManager.KEY_ACCOUNT_TYPE, account_type);
+				response.putExtra(AccountManager.KEY_AUTHTOKEN, mAuthToken);
+				
+				setAccountAuthenticatorResult(response.getExtras());
 				finish();
+				
 			} else if(has_error){
 				has_error = false;
 				DialogFragment error_dialog = new ErrorDialog();
-				error_dialog.show(getSupportFragmentManager(), "error");
+				error_dialog.show(getFragmentManager(), "error");
 			} else {
-				mPasswordView
-						.setError(getString(R.string.error_incorrect_password));
+				mPasswordView.setError(getString(R.string.error_incorrect_password));
 				mPasswordView.requestFocus();
 			}
 		}

@@ -12,12 +12,20 @@ import java.net.CookieHandler;
 import java.net.CookieManager;
 import java.net.CookieStore;
 import java.net.HttpCookie;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
+import java.net.NetworkInterface;
+import java.net.ServerSocket;
+import java.net.SocketException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +34,12 @@ import javax.net.ssl.HttpsURLConnection;
 import org.apache.xmlrpc.XmlRpcException;
 import org.apache.xmlrpc.client.XmlRpcClient;
 import org.apache.xmlrpc.client.XmlRpcClientConfigImpl;
+import org.ice4j.StunException;
+import org.ice4j.Transport;
+import org.ice4j.TransportAddress;
+import org.ice4j.stack.StunStack;
+import org.ice4j.stunclient.NetworkConfigurationDiscoveryProcess;
+import org.ice4j.stunclient.StunDiscoveryReport;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -36,15 +50,15 @@ import android.support.v4.app.DialogFragment;
 import android.support.v4.app.FragmentTransaction;
 import android.accounts.Account;
 import android.accounts.AccountManager;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Bitmap;
-import android.graphics.Bitmap.CompressFormat;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
-import android.media.MediaPlayer.OnPreparedListener;
 import android.media.SoundPool;
 import android.media.SoundPool.OnLoadCompleteListener;
 import android.net.Uri;
@@ -60,6 +74,7 @@ import tv.danmaku.ijk.media.player.IMediaPlayer;
 import tv.danmaku.ijk.media.player.IMediaPlayer.OnBufferingUpdateListener;
 import tv.danmaku.ijk.media.player.IMediaPlayer.OnErrorListener;
 import tv.danmaku.ijk.media.player.IMediaPlayer.OnInfoListener;
+import tv.danmaku.ijk.media.player.IMediaPlayer.OnPreparedListener;
 import tv.danmaku.ijk.media.widget.VideoView;
 
 public class MainActivity extends ActionBarActivity implements DeviceNotFoundDialog.NoticeDialogListener {
@@ -90,9 +105,10 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 		video_player.setMediaBufferingIndicator(buffering_indicator);
 	
 		video_player.setOnErrorListener(mErrorListener);
-		//video_player.setOnBufferingUpdateListener(mBufferListener);
+		video_player.setOnBufferingUpdateListener(mBufferListener);
 		video_player.setOnInfoListener(mInfoListener);
-		video_player.setDrawingCacheEnabled(true);
+		video_player.setOnPreparedListener(mPreparedListener);
+
 	    XmlRpcClientConfigImpl config = new XmlRpcClientConfigImpl();
 		try {
 			config.setServerURL(new URL(ServerInfo.url + "/relay"));
@@ -136,10 +152,33 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 		new Thread(new Runnable() {
 			public void run() {
 
-				Object[] result = null;
 				
-				while(true) {
-					try {
+				try{
+					
+					ServerSocket local_socket = new ServerSocket(0);
+					StunStack stun_stack = new StunStack();
+
+					// set up local and server addresses
+					TransportAddress local_address = new TransportAddress(getLocalIpAddress(), local_socket.getLocalPort(), Transport.UDP);
+					TransportAddress server_address = new TransportAddress("stun.sipgate.net", 10000, Transport.UDP);
+					
+					// query stun server to determine advertised port
+					NetworkConfigurationDiscoveryProcess stun_discovery = new NetworkConfigurationDiscoveryProcess(stun_stack, local_address, server_address);
+					stun_discovery.start();
+					TransportAddress public_address = stun_discovery.determineAddress().getPublicAddress();
+					
+					// set local and advertised ports for video player
+					video_player.setLocalPort(local_socket.getLocalPort());
+					video_player.setAdvertisedPort(public_address.getPort());
+
+					stun_discovery.shutDown();
+					stun_stack.shutDown();
+					local_socket.close();
+					
+					Object[] result = null;
+				
+					while(true) {
+					
 						
 						result = (Object[]) rpc_client.execute("streamVideo", new Object[]{});
 						
@@ -167,28 +206,29 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 								}
 							});
 						}
+					}
 					} catch (XmlRpcException e) {
 						FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
 						DialogFragment not_found_dialog = new DeviceNotFoundDialog();
 						ft.add(not_found_dialog, "not found");
 						ft.commitAllowingStateLoss();
 						e.printStackTrace();
-						break;
+						//break;
 					} catch (IndexOutOfBoundsException e) {
 						FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
 						DialogFragment not_found_dialog = new DeviceNotFoundDialog();
 						ft.add(not_found_dialog, "please try again");
 						ft.commitAllowingStateLoss();
 						e.printStackTrace();
-						break;
+						//break;
+					} catch (Exception exc) {
+						exc.printStackTrace();
 					}
-
 					try {
 						Thread.sleep(5000);
 					} catch (InterruptedException e) {
 						e.printStackTrace();
 					}
-				}
 
 			}
 		}).start();
@@ -294,9 +334,6 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
         
     	if(item.getGroupId() == R.id.sounds){
     		playSound(item.getTitle().toString());
@@ -361,7 +398,31 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
             return true;
         }
     };
-
+    
+    OnPreparedListener mPreparedListener = new OnPreparedListener() {
+		@Override
+		public void onPrepared(IMediaPlayer mp) {
+			buffering_indicator.setVisibility(View.GONE);
+		}
+    };
+    
+    public static String getLocalIpAddress() {
+        try {
+            for (Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces(); en.hasMoreElements();) {
+                NetworkInterface intf = en.nextElement();
+                for (Enumeration<InetAddress> enumIpAddr = intf.getInetAddresses(); enumIpAddr.hasMoreElements();) {
+                    InetAddress inetAddress = enumIpAddr.nextElement();
+                    if (!inetAddress.isLoopbackAddress() && inetAddress instanceof Inet4Address) {
+                        return inetAddress.getHostAddress();
+                    }
+                }
+            }
+        } catch (SocketException ex) {
+            ex.printStackTrace();
+        }
+        return null;
+    }
+    
 	@Override
 	public void onDialogPositiveClick(DialogFragment dialog) {
 		startVideo();

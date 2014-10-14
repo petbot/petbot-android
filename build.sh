@@ -14,4 +14,4 @@ cd ijkplayer
 ./init-android.sh
 cd android
 ./compile-ffmpeg.sh all
-./compile-ijk.sh
+./compile-ijk.sh all

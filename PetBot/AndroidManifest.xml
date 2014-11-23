@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.atos.petbot"
-    android:versionCode="1"
-    android:versionName="1.0" >
+    android:versionCode="3"
+    android:versionName="2.1" >
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.GET_ACCOUNTS" />
     <uses-permission android:name="android.permission.MANAGE_ACCOUNTS" />
     <uses-permission android:name="android.permission.AUTHENTICATE_ACCOUNTS" />
     <uses-permission android:name="android.permission.USE_CREDENTIALS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <uses-sdk
         android:minSdkVersion="14"
@@ -42,8 +43,12 @@
             android:windowSoftInputMode="adjustResize|stateVisible" >
         </activity>
         <activity
-            android:name="com.atos.petbot.Foo"
-            android:label="@string/title_activity_foo" >
+            android:name="com.atos.petbot.SoundManager2"
+            android:label="@string/title_activity_sound_manger"
+            android:parentActivityName="com.atos.petbot.MainActivity" >
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="com.atos.petbot.MainActivity" />
         </activity>
 
         <service android:name="com.atos.petbot.AccountService" >
@@ -57,8 +62,8 @@
         </service>
 
         <activity
-            android:name="com.atos.petbot.ResultActivity"
-            android:label="@string/title_activity_result" >
+            android:name="com.atos.audiocontroller.SoundManager"
+            android:label="@string/title_activity_sound_manager" >
         </activity>
     </application>
 

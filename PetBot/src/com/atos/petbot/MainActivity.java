@@ -43,6 +43,7 @@ import org.ice4j.stunclient.StunDiscoveryReport;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import com.atos.audiocontroller.SoundManager;
 import com.atos.petbot.xmlrpc.XmlRpcHttpCookieTransportFactory;
 
 import android.support.v7.app.ActionBarActivity;
@@ -100,10 +101,10 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 		CookieHandler.setDefault(cookie_manager);
 
 		buffering_indicator = findViewById(R.id.buffering_indicator);
-		
+
 		video_player = (VideoView) findViewById(R.id.video_view);
 		video_player.setMediaBufferingIndicator(buffering_indicator);
-	
+
 		video_player.setOnErrorListener(mErrorListener);
 		video_player.setOnBufferingUpdateListener(mBufferListener);
 		video_player.setOnInfoListener(mInfoListener);
@@ -179,8 +180,9 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 				
 					while(true) {
 					
-						
-						result = (Object[]) rpc_client.execute("streamVideo", new Object[]{});
+						synchronized(rpc_client){
+							result = (Object[]) rpc_client.execute("streamVideo", new Object[]{});
+						}
 						
 						Map<String,String> info = (Map<String,String>) result[1];
 						String new_stream_uri = info.get("rtsp");
@@ -206,6 +208,8 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 								}
 							});
 						}
+						
+						Thread.sleep(5000);
 					}
 					} catch (XmlRpcException e) {
 						FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
@@ -240,7 +244,9 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 				
 				try {
 					Boolean result = false;
-					result = (Boolean) rpc_client.execute("sendCookie", new Object[]{});
+					synchronized(rpc_client){
+						result = (Boolean) rpc_client.execute("sendCookie", new Object[]{});
+					}
 					Log.i("??? treat ???", " " + result);					
 				} catch (XmlRpcException e) {
 					e.printStackTrace();
@@ -314,9 +320,21 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 					media_player.prepare();
 					media_player.start();
 					
+					String sound_url = ServerInfo.url + "/get_sound/" + sound_name;
+					synchronized(rpc_client){
+						Boolean result = (Boolean) rpc_client.execute("playSound", new Object[]{sound_url});
+					}
+
+					
 				} catch (IOException exc) {
 					// TODO Auto-generated catch block
 					exc.printStackTrace();
+				} catch (XmlRpcException e) {
+					FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
+					DialogFragment not_found_dialog = new DeviceNotFoundDialog();
+					ft.add(not_found_dialog, "not found");
+					ft.commitAllowingStateLoss();
+					e.printStackTrace();
 				}
 			}
     	}).start();
@@ -351,7 +369,7 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 				ByteBuffer data = ByteBuffer.wrap(video_player.grabFrame());
 				Bitmap bitmap = Bitmap.createBitmap(video_player.getVideoWidth(), video_player.getVideoHeight(), Bitmap.Config.RGB_565);
 				bitmap.copyPixelsFromBuffer(data);
-				String image_url = MediaStore.Images.Media.insertImage(getContentResolver(), bitmap, "foo", "Thats a lot of bar.");
+				String image_url = MediaStore.Images.Media.insertImage(getContentResolver(), bitmap, "PetBot Snapshot", "");
 				
 				// bring up intent to view and share the picture
 				Intent view_picture = new Intent();
@@ -361,9 +379,10 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 				
     			return true;
     			
-    		case R.id.action_sound:
-    			//playSound(null);
-    			return true;
+    		/*case R.id.sound_manager:
+    			Intent sound_manager = new Intent(this, SoundManager.class);
+    			startActivity(sound_manager);*/
+    			
     		default:
     			return super.onOptionsItemSelected(item);
     	}

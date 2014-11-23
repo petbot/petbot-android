@@ -14,6 +14,8 @@
         app:showAsAction="ifRoom">
         
         <menu>
+            <!--<item android:id="@+id/sound_manager"
+                android:title="manager" />-->
             <group android:id="@+id/sounds" />
         </menu>
         

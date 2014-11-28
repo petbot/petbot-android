@@ -24,7 +24,8 @@
     <item android:id="@+id/action_picture"
         android:icon="@android:drawable/ic_menu_camera"
         android:title="picture"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="ifRoom"
+        android:enabled="false" />
     
     <item
         android:id="@+id/action_settings"

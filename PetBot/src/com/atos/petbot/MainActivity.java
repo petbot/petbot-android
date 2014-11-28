@@ -25,19 +25,31 @@ import java.net.URL;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 
 import javax.net.ssl.HttpsURLConnection;
 
+import petbot.net.stun.DiscoveryInfo;
+import petbot.net.stun.StunClient;
+
 import org.apache.xmlrpc.XmlRpcException;
 import org.apache.xmlrpc.client.XmlRpcClient;
 import org.apache.xmlrpc.client.XmlRpcClientConfigImpl;
 import org.ice4j.StunException;
+import org.ice4j.StunMessageEvent;
 import org.ice4j.Transport;
 import org.ice4j.TransportAddress;
+import org.ice4j.attribute.AttributeFactory;
+import org.ice4j.attribute.ChangeRequestAttribute;
+import org.ice4j.message.Message;
+import org.ice4j.message.MessageFactory;
+import org.ice4j.message.Request;
 import org.ice4j.stack.StunStack;
+import org.ice4j.stunclient.BlockingRequestSender;
 import org.ice4j.stunclient.NetworkConfigurationDiscoveryProcess;
 import org.ice4j.stunclient.StunDiscoveryReport;
 import org.json.JSONArray;
@@ -49,6 +61,7 @@ import com.atos.petbot.xmlrpc.XmlRpcHttpCookieTransportFactory;
 import android.support.v7.app.ActionBarActivity;
 import android.support.v4.app.DialogFragment;
 import android.support.v4.app.FragmentTransaction;
+import android.text.format.Time;
 import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.app.AlertDialog;
@@ -80,7 +93,7 @@ import tv.danmaku.ijk.media.widget.VideoView;
 
 public class MainActivity extends ActionBarActivity implements DeviceNotFoundDialog.NoticeDialogListener {
 
-	private Menu menu;
+	private Menu menu = null;
 	private MediaPlayer media_player = new MediaPlayer();
 	
 	private VideoView video_player;
@@ -122,6 +135,15 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 	    
 		login();
     }
+    
+    @Override
+	protected void onPause(){
+    	super.onPause();
+    	buffering_indicator.setVisibility(View.VISIBLE);
+    	if(menu != null){
+    		menu.findItem(R.id.action_picture).setEnabled(false);
+    	}
+    }
 
     private void login(){
     	
@@ -154,11 +176,15 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 			public void run() {
 
 				
+				Time t = new Time();
+				t.setToNow();
+		    	Log.i("!?! TIMER !?!", "start video " + t.format("%M:%S"));
+				
 				try{
 					
-					ServerSocket local_socket = new ServerSocket(0);
+					/*ServerSocket local_socket = new ServerSocket(0);
 					StunStack stun_stack = new StunStack();
-
+					
 					// set up local and server addresses
 					TransportAddress local_address = new TransportAddress(getLocalIpAddress(), local_socket.getLocalPort(), Transport.UDP);
 					TransportAddress server_address = new TransportAddress("stun.sipgate.net", 10000, Transport.UDP);
@@ -166,34 +192,56 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 					// query stun server to determine advertised port
 					NetworkConfigurationDiscoveryProcess stun_discovery = new NetworkConfigurationDiscoveryProcess(stun_stack, local_address, server_address);
 					stun_discovery.start();
-					TransportAddress public_address = stun_discovery.determineAddress().getPublicAddress();
+					TransportAddress public_address = stun_discovery.determineAddress().getPublicAddress();*/
+					
+					StunClient client = new StunClient("petbot.ca", 3478);
+					DiscoveryInfo stun_info = client.bindForRemoteAddressOnly(null);
 					
 					// set local and advertised ports for video player
-					video_player.setLocalPort(local_socket.getLocalPort());
+					video_player.setLocalPort(stun_info.getLocalPort());
+					video_player.setAdvertisedPort(stun_info.getPublicPort());
+					
+					/*video_player.setLocalPort(local_socket.getLocalPort());
 					video_player.setAdvertisedPort(public_address.getPort());
 
 					stun_discovery.shutDown();
 					stun_stack.shutDown();
-					local_socket.close();
+					local_socket.close();*/
 					
 					Object[] result = null;
 				
+					t.setToNow();
+			    	Log.i("!?! TIMER !?!", "done stun " + t.format("%M:%S"));
+			    	
+			    	int retries = 0;
+					
 					while(true) {
 					
 						synchronized(rpc_client){
 							result = (Object[]) rpc_client.execute("streamVideo", new Object[]{});
 						}
 						
+						t.setToNow();
+				    	Log.i("!?! TIMER !?!", "executed start stream " + t.format("%M:%S"));
+						
 						Map<String,String> info = (Map<String,String>) result[1];
 						String new_stream_uri = info.get("rtsp");
 						if(new_stream_uri == null || new_stream_uri.isEmpty()){
 							
+							if(retries < 5){
+								retries++;
+							}
+							int timeout = video_player.isPlaying() ? 5000 : retries * 1000;
+							
+							Log.i("!?! TIMER !?!", "so sleepy");
 							try {
-								Thread.sleep(5000);
+								Thread.sleep(timeout);
 							} catch (InterruptedException e) {
 								e.printStackTrace();
 							}
 							continue;
+						} else {
+							retries = 0;
 						}
 						
 						if (!stream_uri.equals(new_stream_uri)) {
@@ -201,10 +249,19 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 							stream_uri = new_stream_uri;
 							runOnUiThread(new Runnable() {
 								@Override
-								public void run() {				
+								public void run() {
+									
+									Time t = new Time();
+									
+							    	t.setToNow();
+							    	Log.i("!?! TIMER !?!", "ijkstart  " + t.format("%M:%S"));
+									
 									video_player.stopPlayback();
 									video_player.setVideoPath(stream_uri);
 									video_player.start();
+									
+									t.setToNow();
+							    	Log.i("!?! TIMER !?!", "done start " + t.format("%M:%S"));
 								}
 							});
 						}
@@ -422,6 +479,7 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 		@Override
 		public void onPrepared(IMediaPlayer mp) {
 			buffering_indicator.setVisibility(View.GONE);
+			menu.findItem(R.id.action_picture).setEnabled(true);
 		}
     };
     

@@ -97,8 +97,12 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 	private MediaPlayer media_player = new MediaPlayer();
 	
 	private VideoView video_player;
+	private Thread video_thread;
+	boolean paused = true;
+	boolean logged_in = false;
 	private View buffering_indicator;
 	private String stream_uri = "";
+	private Object video_lock = new Object();
 
 	private XmlRpcClient rpc_client;
 	
@@ -133,46 +137,66 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 		rpc_client.setTransportFactory(new XmlRpcHttpCookieTransportFactory(rpc_client));
 		rpc_client.setConfig(config);
 	    
-		login();
+		setupVideo();
     }
     
     @Override
 	protected void onPause(){
     	super.onPause();
+    	synchronized(video_lock){
+    		paused = true;
+    	}
+
     	buffering_indicator.setVisibility(View.VISIBLE);
     	if(menu != null){
     		menu.findItem(R.id.action_picture).setEnabled(false);
     	}
     }
 
+    protected void onResume(){
+    	super.onResume();
+    	paused = false;
+    	if(logged_in){
+    		synchronized (video_lock) {
+                paused = false;
+                video_lock.notifyAll();
+            }
+    	} else {
+    		login();
+    	}
+    }
+    
     private void login(){
     	
     	final AccountManager account_manager = AccountManager.get(this);
     	final Account[] accounts = account_manager.getAccountsByType("com.atos.petbot");
     	if(accounts.length > 0){
+    		Log.i("asdfasdf", "!!! FOO !!!");
     		account_manager.getAuthToken(accounts[0], "", null, this, null, null);
     		new Thread(new Runnable(){
     			public void run(){
     				ServerInfo.login(accounts[0].name, account_manager.getPassword(accounts[0]));
     				runOnUiThread(new Runnable(){
     					public void run(){
-    						startVideo();
+    						video_thread.start();
     						getSounds();
     					}
     				});
     			}
     		}).start();
     	} else {
+    		Log.i("asdfasdf", "??? BAR ???");
     		account_manager.addAccount("com.atos.petbot", "", null, null, this, null, null);
-    		startVideo();
+    		video_thread.start();
     	}
     	
+    	logged_in = true;
     }
 
     
-    public void startVideo(){
+    public void setupVideo(){
     	
-		new Thread(new Runnable() {
+		video_thread = new Thread(new Runnable() {
 			public void run() {
 
 				
@@ -182,31 +206,12 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 				
 				try{
 					
-					/*ServerSocket local_socket = new ServerSocket(0);
-					StunStack stun_stack = new StunStack();
-					
-					// set up local and server addresses
-					TransportAddress local_address = new TransportAddress(getLocalIpAddress(), local_socket.getLocalPort(), Transport.UDP);
-					TransportAddress server_address = new TransportAddress("stun.sipgate.net", 10000, Transport.UDP);
-					
-					// query stun server to determine advertised port
-					NetworkConfigurationDiscoveryProcess stun_discovery = new NetworkConfigurationDiscoveryProcess(stun_stack, local_address, server_address);
-					stun_discovery.start();
-					TransportAddress public_address = stun_discovery.determineAddress().getPublicAddress();*/
-					
 					StunClient client = new StunClient("petbot.ca", 3478);
 					DiscoveryInfo stun_info = client.bindForRemoteAddressOnly(null);
 					
 					// set local and advertised ports for video player
 					video_player.setLocalPort(stun_info.getLocalPort());
 					video_player.setAdvertisedPort(stun_info.getPublicPort());
-					
-					/*video_player.setLocalPort(local_socket.getLocalPort());
-					video_player.setAdvertisedPort(public_address.getPort());
-
-					stun_discovery.shutDown();
-					stun_stack.shutDown();
-					local_socket.close();*/
 					
 					Object[] result = null;
 				
@@ -217,7 +222,18 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 					
 					while(true) {
 					
+						synchronized (video_lock) {
+			                while (paused) {
+			                    try {
+			                        video_lock.wait();
+			                    } catch (InterruptedException e) {
+			                    }
+			                }
+			            }
+						
+						Log.i("asdfasdf", "outside sync");
 						synchronized(rpc_client){
+							Log.i("asdfasdf", "inside sync");
 							result = (Object[]) rpc_client.execute("streamVideo", new Object[]{});
 						}
 						
@@ -292,7 +308,7 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 					}
 
 			}
-		}).start();
+		});
 	}
     
     public void dropTreat(){
@@ -426,19 +442,35 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 				ByteBuffer data = ByteBuffer.wrap(video_player.grabFrame());
 				Bitmap bitmap = Bitmap.createBitmap(video_player.getVideoWidth(), video_player.getVideoHeight(), Bitmap.Config.RGB_565);
 				bitmap.copyPixelsFromBuffer(data);
-				String image_url = MediaStore.Images.Media.insertImage(getContentResolver(), bitmap, "PetBot Snapshot", "");
 				
-				// bring up intent to view and share the picture
-				Intent view_picture = new Intent();
-				view_picture.setAction(Intent.ACTION_VIEW);
-				view_picture.setDataAndType(Uri.parse(image_url), "image/*");
-				startActivity(view_picture);
-				
+				File album = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "PetBot");
+			    album.mkdirs();
+				try {
+					File image_file = File.createTempFile("img", ".jpg", album);
+					FileOutputStream out = new FileOutputStream(image_file);   
+					bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out);
+					out.close();
+					
+					Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+				    mediaScanIntent.setData(Uri.fromFile(image_file));
+				    this.sendBroadcast(mediaScanIntent);
+					
+					// bring up intent to view and share the picture
+					Intent view_picture = new Intent();
+					view_picture.setAction(Intent.ACTION_VIEW);
+					view_picture.setDataAndType(Uri.fromFile(image_file), "image/*");
+					startActivity(view_picture);
+					
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+							
     			return true;
     			
-    		/*case R.id.sound_manager:
+    		case R.id.sound_manager:
     			Intent sound_manager = new Intent(this, SoundManager.class);
-    			startActivity(sound_manager);*/
+    			startActivity(sound_manager);
     			
     		default:
     			return super.onOptionsItemSelected(item);
@@ -502,12 +534,12 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
     
 	@Override
 	public void onDialogPositiveClick(DialogFragment dialog) {
-		startVideo();
+		//video_thread.start();
 	}
 
 	@Override
 	public void onDialogNegativeClick(DialogFragment dialog) {
-		login();
+		//login();
 	}
     
 }

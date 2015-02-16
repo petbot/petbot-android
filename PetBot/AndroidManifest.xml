@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.atos.petbot"
-    android:versionCode="3"
-    android:versionName="2.1" >
+    android:versionCode="6"
+    android:versionName="2.3.2" >
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.GET_ACCOUNTS" />
@@ -64,6 +64,14 @@
         <activity
             android:name="com.atos.audiocontroller.SoundManager"
             android:label="@string/title_activity_sound_manager" >
+        </activity>
+        <activity
+            android:name="com.atos.petbot.SettingsActivity"
+            android:label="@string/title_activity_settings"
+            android:parentActivityName="com.atos.petbot.MainActivity" >
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="com.atos.petbot.MainActivity" />
         </activity>
     </application>
 

@@ -14,8 +14,8 @@
         app:showAsAction="ifRoom">
         
         <menu>
-            <!--<item android:id="@+id/sound_manager"
-                android:title="manager" />-->
+            <item android:id="@+id/sound_manager"
+                android:title="manager" />
             <group android:id="@+id/sounds" />
         </menu>
         
@@ -31,6 +31,12 @@
         android:id="@+id/action_settings"
         android:orderInCategory="100"
         android:title="@string/action_settings"
+        app:showAsAction="never"/>
+    
+    <item
+        android:id="@+id/action_logs"
+        android:orderInCategory="100"
+        android:title="send log"
         app:showAsAction="never"/>
 
 </menu>

@@ -39,19 +39,7 @@ import petbot.net.stun.StunClient;
 import org.apache.xmlrpc.XmlRpcException;
 import org.apache.xmlrpc.client.XmlRpcClient;
 import org.apache.xmlrpc.client.XmlRpcClientConfigImpl;
-import org.ice4j.StunException;
-import org.ice4j.StunMessageEvent;
-import org.ice4j.Transport;
-import org.ice4j.TransportAddress;
-import org.ice4j.attribute.AttributeFactory;
-import org.ice4j.attribute.ChangeRequestAttribute;
-import org.ice4j.message.Message;
-import org.ice4j.message.MessageFactory;
-import org.ice4j.message.Request;
-import org.ice4j.stack.StunStack;
-import org.ice4j.stunclient.BlockingRequestSender;
-import org.ice4j.stunclient.NetworkConfigurationDiscoveryProcess;
-import org.ice4j.stunclient.StunDiscoveryReport;
+
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -61,6 +49,7 @@ import com.atos.petbot.xmlrpc.XmlRpcHttpCookieTransportFactory;
 import android.support.v7.app.ActionBarActivity;
 import android.support.v4.app.DialogFragment;
 import android.support.v4.app.FragmentTransaction;
+import android.text.TextUtils;
 import android.text.format.Time;
 import android.accounts.Account;
 import android.accounts.AccountManager;
@@ -91,6 +80,11 @@ import tv.danmaku.ijk.media.player.IMediaPlayer.OnInfoListener;
 import tv.danmaku.ijk.media.player.IMediaPlayer.OnPreparedListener;
 import tv.danmaku.ijk.media.widget.VideoView;
 
+enum ActivityResult {
+	ACCOUNT_CHOOSER,
+	LOG_REQUEST
+}
+
 public class MainActivity extends ActionBarActivity implements DeviceNotFoundDialog.NoticeDialogListener {
 
 	private Menu menu = null;
@@ -104,6 +98,8 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 	private String stream_uri = "";
 	private Object video_lock = new Object();
 
+	public static String PACKAGE_NAME;
+	
 	private XmlRpcClient rpc_client;
 	
     @Override
@@ -111,6 +107,8 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
         
     	super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        
+        PACKAGE_NAME = getApplicationContext().getPackageName();
         
         getActionBar().setBackgroundDrawable(new ColorDrawable(Color.parseColor("#80000000")));
         
@@ -155,20 +153,26 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 
     protected void onResume(){
     	super.onResume();
+    	Log.i(PACKAGE_NAME, "??? RESUME ???");
     	paused = false;
     	if(logged_in){
+    		Log.i(PACKAGE_NAME, "ALREADY LOGGED IN");
     		synchronized (video_lock) {
                 paused = false;
                 video_lock.notifyAll();
             }
     	} else {
+    		Log.i(PACKAGE_NAME, "LOGGING IN");
     		login();
     	}
     }
     
     private void login(){
     	
-    	final AccountManager account_manager = AccountManager.get(this);
+    	Intent login_intent = AccountManager.newChooseAccountIntent(null, null, new String[]{"com.atos.petbot"}, true, null, "", null, null);
+    	startActivityForResult(login_intent, ActivityResult.ACCOUNT_CHOOSER.ordinal());
+    	
+    	/*final AccountManager account_manager = AccountManager.get(this);
     	final Account[] accounts = account_manager.getAccountsByType("com.atos.petbot");
     	if(accounts.length > 0){
     		Log.i("asdfasdf", "!!! FOO !!!");
@@ -190,7 +194,7 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
     		video_thread.start();
     	}
     	
-    	logged_in = true;
+    	logged_in = true;*/
     }
 
     
@@ -202,111 +206,106 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 				
 				Time t = new Time();
 				t.setToNow();
-		    	Log.i("!?! TIMER !?!", "start video " + t.format("%M:%S"));
+		    	Log.i(PACKAGE_NAME, "start video " + t.format("%M:%S"));
+					
+				StunClient client = new StunClient("petbot.ca", 3478);
+				DiscoveryInfo stun_info = client.bindForRemoteAddressOnly(null);
 				
-				try{
-					
-					StunClient client = new StunClient("petbot.ca", 3478);
-					DiscoveryInfo stun_info = client.bindForRemoteAddressOnly(null);
-					
-					// set local and advertised ports for video player
-					video_player.setLocalPort(stun_info.getLocalPort());
-					video_player.setAdvertisedPort(stun_info.getPublicPort());
-					
-					Object[] result = null;
+				// set local and advertised ports for video player
+				video_player.setLocalPort(stun_info.getLocalPort());
+				video_player.setAdvertisedPort(stun_info.getPublicPort());
 				
+				Object[] result = null;
+			
+				t.setToNow();
+		    	Log.i(PACKAGE_NAME, "done stun " + t.format("%M:%S"));
+		    	
+		    	int retries = 0;
+				
+		    	try{
+		    	
+				while(true) {
+				
+					synchronized (video_lock) {
+		                while (paused) {
+		                    try {
+		                        video_lock.wait();
+		                    } catch (InterruptedException e) {
+		                    }
+		                }
+		            }
+					
+					Log.i("asdfasdf", "outside sync");
+					synchronized(rpc_client){
+						Log.i("asdfasdf", "inside sync");
+						result = (Object[]) rpc_client.execute("streamVideo", new Object[]{});
+					}
+					
 					t.setToNow();
-			    	Log.i("!?! TIMER !?!", "done stun " + t.format("%M:%S"));
-			    	
-			    	int retries = 0;
+			    	Log.i(PACKAGE_NAME, "executed start stream " + t.format("%M:%S"));
 					
-					while(true) {
+					Map<String,String> info = (Map<String,String>) result[1];
+					String new_stream_uri = info.get("rtsp");
+					if(new_stream_uri == null || new_stream_uri.isEmpty()){
+						
+						if(retries < 5){
+							retries++;
+						}
+						int timeout = video_player.isPlaying() ? 5000 : retries * 1000;
+						
+						Log.i(PACKAGE_NAME, "so sleepy");
+						try {
+							Thread.sleep(timeout);
+						} catch (InterruptedException e) {
+							e.printStackTrace();
+						}
+						continue;
+					} else {
+						retries = 0;
+					}
 					
-						synchronized (video_lock) {
-			                while (paused) {
-			                    try {
-			                        video_lock.wait();
-			                    } catch (InterruptedException e) {
-			                    }
-			                }
-			            }
+					if (!stream_uri.equals(new_stream_uri)) {
 						
-						Log.i("asdfasdf", "outside sync");
-						synchronized(rpc_client){
-							Log.i("asdfasdf", "inside sync");
-							result = (Object[]) rpc_client.execute("streamVideo", new Object[]{});
-						}
-						
-						t.setToNow();
-				    	Log.i("!?! TIMER !?!", "executed start stream " + t.format("%M:%S"));
-						
-						Map<String,String> info = (Map<String,String>) result[1];
-						String new_stream_uri = info.get("rtsp");
-						if(new_stream_uri == null || new_stream_uri.isEmpty()){
-							
-							if(retries < 5){
-								retries++;
+						stream_uri = new_stream_uri;
+						runOnUiThread(new Runnable() {
+							@Override
+							public void run() {
+								
+								Time t = new Time();
+								
+						    	t.setToNow();
+						    	Log.i(PACKAGE_NAME, "ijkstart  " + t.format("%M:%S"));
+								
+								video_player.stopPlayback();
+								video_player.setVideoPath(stream_uri);
+								video_player.start();
+								
+								t.setToNow();
+						    	Log.i(PACKAGE_NAME, "done start " + t.format("%M:%S"));
 							}
-							int timeout = video_player.isPlaying() ? 5000 : retries * 1000;
-							
-							Log.i("!?! TIMER !?!", "so sleepy");
-							try {
-								Thread.sleep(timeout);
-							} catch (InterruptedException e) {
-								e.printStackTrace();
-							}
-							continue;
-						} else {
-							retries = 0;
-						}
-						
-						if (!stream_uri.equals(new_stream_uri)) {
-							
-							stream_uri = new_stream_uri;
-							runOnUiThread(new Runnable() {
-								@Override
-								public void run() {
-									
-									Time t = new Time();
-									
-							    	t.setToNow();
-							    	Log.i("!?! TIMER !?!", "ijkstart  " + t.format("%M:%S"));
-									
-									video_player.stopPlayback();
-									video_player.setVideoPath(stream_uri);
-									video_player.start();
-									
-									t.setToNow();
-							    	Log.i("!?! TIMER !?!", "done start " + t.format("%M:%S"));
-								}
-							});
-						}
-						
-						Thread.sleep(5000);
+						});
 					}
-					} catch (XmlRpcException e) {
-						FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
-						DialogFragment not_found_dialog = new DeviceNotFoundDialog();
-						ft.add(not_found_dialog, "not found");
-						ft.commitAllowingStateLoss();
-						e.printStackTrace();
-						//break;
-					} catch (IndexOutOfBoundsException e) {
-						FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
-						DialogFragment not_found_dialog = new DeviceNotFoundDialog();
-						ft.add(not_found_dialog, "please try again");
-						ft.commitAllowingStateLoss();
-						e.printStackTrace();
-						//break;
-					} catch (Exception exc) {
-						exc.printStackTrace();
-					}
-					try {
-						Thread.sleep(5000);
-					} catch (InterruptedException e) {
-						e.printStackTrace();
-					}
-
+					
+					Thread.sleep(5000);
+				}
+				
+		    	} catch (XmlRpcException e) {
+					FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
+					DialogFragment not_found_dialog = new DeviceNotFoundDialog();
+					ft.add(not_found_dialog, "not found");
+					ft.commitAllowingStateLoss();
+					e.printStackTrace();
+					//break;
+				} catch (IndexOutOfBoundsException e) {
+					FragmentTransaction ft = getSupportFragmentManager().beginTransaction();
+					DialogFragment not_found_dialog = new DeviceNotFoundDialog();
+					ft.add(not_found_dialog, "please try again");
+					ft.commitAllowingStateLoss();
+					e.printStackTrace();
+					//break;
+				} catch (Exception exc) {
+					exc.printStackTrace();
+				}
 			}
 		});
 	}
@@ -468,9 +467,19 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 							
     			return true;
     			
+    		case R.id.action_logs:
+    			saveLogcatToFile();
+    			return true;
+    			
     		case R.id.sound_manager:
     			Intent sound_manager = new Intent(this, SoundManager.class);
     			startActivity(sound_manager);
+    			return true;
+    			
+    		case R.id.action_settings:
+    			Intent settings = new Intent(this, SettingsActivity.class);
+    			startActivity(settings);
+    			return true;
     			
     		default:
     			return super.onOptionsItemSelected(item);
@@ -479,21 +488,21 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 
     private OnErrorListener mErrorListener = new OnErrorListener(){
     	public boolean onError(IMediaPlayer mp, int framework_err, int impl_err) {
-    		Log.i("asdfasdfasdf", "ERROR LISTENER");
+    		Log.i(PACKAGE_NAME, "ERROR LISTENER");
     		return true;
     	}
     };
     
     private OnBufferingUpdateListener mBufferListener = new OnBufferingUpdateListener(){
     	public void onBufferingUpdate(IMediaPlayer mp, int percent) {
-    		Log.i("asdfasdfasdf", "BUFFER LISTENER");
+    		Log.i(PACKAGE_NAME, "BUFFER LISTENER");
     	}
     };
     
     private OnInfoListener mInfoListener = new OnInfoListener() {
         @Override
         public boolean onInfo(IMediaPlayer mp, int what, int extra) {
-            Log.i("asdfasdfasdf", "onInfo: (" + what + "," + extra + ")");
+            Log.i(PACKAGE_NAME, "onInfo: (" + what + "," + extra + ")");
 
             if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_START) {
                 Log.i("asdfasdfasdf", "onInfo: (MEDIA_INFO_BUFFERING_START)");
@@ -534,12 +543,74 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
     
 	@Override
 	public void onDialogPositiveClick(DialogFragment dialog) {
-		//video_thread.start();
+		try {
+			video_thread.join();
+			setupVideo();
+			video_thread.start();
+		} catch (InterruptedException exc) {
+			// TODO Auto-generated catch block
+			exc.printStackTrace();
+		}
 	}
 
 	@Override
 	public void onDialogNegativeClick(DialogFragment dialog) {
 		//login();
+	}
+	
+	@Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        
+		if( resultCode == RESULT_CANCELED)
+            return;
+        
+		if( requestCode == ActivityResult.ACCOUNT_CHOOSER.ordinal() ) {
+			
+			Bundle bundle = data.getExtras();
+        	final Account user = new Account(bundle.getString(AccountManager.KEY_ACCOUNT_NAME), 
+        			bundle.getString(AccountManager.KEY_ACCOUNT_TYPE));
+        	
+        	final AccountManager account_manager = AccountManager.get(this);
+        	account_manager.getAuthToken(user, "", null, this, null, null);
+        	logged_in = true;
+        	
+    		new Thread(new Runnable(){
+    			public void run(){
+    				
+    				if(TextUtils.isEmpty(ServerInfo.cookie)){
+    					ServerInfo.login(user.name, account_manager.getPassword(user));
+    				}
+    				
+    				Log.i(PACKAGE_NAME, "account info; " + user.name + " " + user.type + " " + ServerInfo.cookie);
+    				
+    				runOnUiThread(new Runnable(){
+    					public void run(){
+    						video_thread.start();
+    						getSounds();
+    					}
+    				});
+    			}
+    		}).start();
+		}
+    }
+	
+	public void saveLogcatToFile() {
+		
+		String file_name = "petbot_" + System.currentTimeMillis() + ".log";
+		File log_file = new File(this.getExternalCacheDir(), file_name);
+		//File log_file = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), file_name);
+	    try {
+			@SuppressWarnings("unused")
+			Process process = Runtime.getRuntime().exec("logcat -f "+ log_file.getAbsolutePath() + " -v threadtime " + PACKAGE_NAME + ":D");
+		} catch (IOException exc) {
+			// TODO Auto-generated catch block
+			exc.printStackTrace();
+		}
+	    
+	    Intent email_intent = new Intent(Intent.ACTION_SENDTO, Uri.fromParts("mailto", "", null));
+	    email_intent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(log_file));
+	    startActivityForResult(email_intent, 0);
+	    //log_file.delete();
 	}
     
 }

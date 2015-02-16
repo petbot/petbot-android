@@ -50,10 +50,15 @@
            android:src="@drawable/play"
            android:contentDescription="play" />
         
-        <ImageButton android:id="@+id/record"
+        <ToggleButton android:id="@+id/record"
            style="@android:style/MediaButton"
-           android:src="@drawable/record"
-           android:contentDescription="play" />
+           android:layout_width="wrap_content"
+           android:layout_height="wrap_content"
+           android:button="@drawable/record"
+           android:background="@null"
+           android:contentDescription="record"
+           android:textOn=""
+           android:textOff="" />
        
         <ImageButton android:id="@+id/ffwd"
            style="@android:style/MediaButton.Ffwd"

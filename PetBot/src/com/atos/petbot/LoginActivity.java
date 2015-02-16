@@ -48,8 +48,6 @@ import android.widget.TextView;
  */
 public class LoginActivity extends AccountAuthenticatorActivity {
 
-
-	
 	/**
 	 * The default email to populate the email field with.
 	 */

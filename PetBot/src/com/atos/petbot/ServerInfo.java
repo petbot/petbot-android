@@ -17,7 +17,9 @@ import android.util.Log;
  * Created by root on 6/25/14.
  */
 public class ServerInfo {
+	
 	public final static String url = "https://www.petbot.ca";
+	public static String cookie = "";
 	
 	public static String login(String email, String password) {
 		
@@ -30,6 +32,7 @@ public class ServerInfo {
 
 		URL server = new URL(url + "/login");
 		HttpsURLConnection connection = (HttpsURLConnection) server.openConnection();
+		
 		connection.setRequestMethod("POST");
 		connection.setRequestProperty("Accept", "application/json");
 		connection.setRequestProperty("Content-Type", "application/json");
@@ -41,19 +44,22 @@ public class ServerInfo {
 		out_stream.flush();
 		out_stream.close();
 
+		cookie = connection.getHeaderField("Set-Cookie");		
+		
 		BufferedReader in_stream = new BufferedReader(new InputStreamReader(connection.getInputStream()));
 		StringBuilder response = new StringBuilder();
 		String line = null;
 		while ((line = in_stream.readLine()) != null) {
 			response.append(line);
 		}
+		in_stream.close();
+		connection.disconnect();
 
 		JSONObject login_response = new JSONObject(response.toString());
 		int response_code = login_response.getJSONObject("meta").getInt("code");
 		
 		String token = "";
 		if(response_code == 200){
-
 			// return authentication token in result intent
 			token = login_response.getJSONObject("response").getJSONObject("user").getString("authentication_token");
 		}

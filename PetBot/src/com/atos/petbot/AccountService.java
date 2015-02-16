@@ -14,6 +14,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.text.TextUtils;
+import android.util.Log;
 
 public class AccountService extends Service {
 	
@@ -69,7 +71,8 @@ public class AccountService extends Service {
 	    	final AccountManager account_manager = AccountManager.get(AccountService.this);
 	    	String auth_token = account_manager.peekAuthToken(account, authTokenType);
 	    	
-	    	if (auth_token.isEmpty()) {
+	    	if (auth_token.isEmpty() || TextUtils.isEmpty(ServerInfo.cookie)) {
+	    		Log.i("asdfasdfasdf", "WOOWOWOWOWOWOWOWOWOWOWOO");
 	            final String password = account_manager.getPassword(account);
 	            if (password != null) {
 	            	auth_token = ServerInfo.login(account.name, password);	           
@@ -85,7 +88,7 @@ public class AccountService extends Service {
 	            return result;
 	        }
 	    	
-	        return addAccount(response, account.type, authTokenType, null, options);  
+	        return addAccount(response, account.type, authTokenType, null, options);
 	    }  
 	  
 	    @Override  

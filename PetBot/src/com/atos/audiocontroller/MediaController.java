@@ -37,6 +37,7 @@ import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
+import android.widget.ToggleButton;
 
 import java.lang.ref.WeakReference;
 import java.util.Formatter;
@@ -96,7 +97,7 @@ public class MediaController extends FrameLayout {
     private ImageButton         mPlayButton;
     private ImageButton         mPauseButton;
     private ImageButton         mStopButton;
-    private ImageButton 		mRecordButton;
+    private ToggleButton 		mRecordButton;
     private ImageButton         mFfwdButton;
     private ImageButton         mRewButton;
     private ImageButton         mNextButton;
@@ -185,7 +186,7 @@ public class MediaController extends FrameLayout {
             mPauseButton.setOnClickListener(mPauseListener);
         }
         
-        mRecordButton = (ImageButton) v.findViewById(R.id.record);
+        mRecordButton = (ToggleButton) v.findViewById(R.id.record);
         if (mRecordButton != null) {
             mRecordButton.setOnClickListener(mRecordListener);
         }
@@ -262,6 +263,9 @@ public class MediaController extends FrameLayout {
             }
             if (mStopButton != null && !mPlayer.canPause()) {
                 mStopButton.setEnabled(false);
+            }
+            if (mPauseButton != null && !mPlayer.canPause()) {
+            	mPauseButton.setEnabled(false);
             }
             if (mRewButton != null && !mPlayer.canSeekBackward()) {
                 mRewButton.setEnabled(false);

@@ -1,55 +1,65 @@
 package com.atos.petbot;
 
-import android.accounts.Account;
-import android.accounts.AccountManager;
-import android.annotation.TargetApi;
-import android.content.Context;
-import android.content.res.Configuration;
-import android.media.Ringtone;
-import android.media.RingtoneManager;
-import android.net.Uri;
-import android.os.Build;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import java.util.Set;
+
+import android.app.Activity;
 import android.os.Bundle;
 import android.preference.ListPreference;
 import android.preference.Preference;
-import android.preference.PreferenceActivity;
-import android.preference.PreferenceCategory;
+import android.preference.Preference.OnPreferenceChangeListener;
 import android.preference.PreferenceFragment;
-import android.preference.PreferenceManager;
-import android.preference.RingtonePreference;
-import android.text.TextUtils;
-import android.view.MenuItem;
-import android.support.v4.app.NavUtils;
+import android.preference.PreferenceScreen;
+import android.util.Log;
 
-import java.util.List;
 
-/**
- * A {@link PreferenceActivity} that presents a set of application settings. On
- * handset devices, settings are presented as a single list. On tablets,
- * settings are split by category, with category headers shown to the left of
- * the list of settings.
- * <p>
- * See <a href="http://developer.android.com/design/patterns/settings.html">
- * Android Design: Settings</a> for design guidelines and the <a
- * href="http://developer.android.com/guide/topics/ui/settings.html">Settings
- * API Guide</a> for more information on developing a Settings UI.
- */
-public class SettingsActivity extends PreferenceActivity {
+public class SettingsActivity extends Activity {
 
 	@Override
-    public void onBuildHeaders(List<Header> target) {
+    protected void onCreate(Bundle savedInstanceState) {
+        
+		super.onCreate(savedInstanceState);
+        getFragmentManager().beginTransaction().replace(android.R.id.content, new SettingsFragment()).commit();
+    }
+	
+	public static class SettingsFragment extends PreferenceFragment {
+	
+		public static final LinkedHashMap<String, String> log_levels = new LinkedHashMap<String, String>(){{
+			put(Integer.toString(Log.ERROR), "Error");
+			put(Integer.toString(Log.WARN), "Warning");
+			put(Integer.toString(Log.INFO), "Info");
+			put(Integer.toString(Log.DEBUG), "Debug");
+			put(Integer.toString(Log.VERBOSE), "Verbose");
+		}};
 		
-		// get petbot accounts
-		AccountManager account_manager = AccountManager.get(this);
-		Account[] accounts = account_manager.getAccountsByType("com.atos.petbot");
-		
-		// add each account as a header
-		for(Account account : accounts){
-			Header account_header = new Header();
-			account_header.title = account.name;
-			target.add(account_header);
+		@Override
+	    public void onCreate(Bundle savedInstanceState) {
+	
+			super.onCreate(savedInstanceState);
+			addPreferencesFromResource(R.xml.preferences);
+			
+			ListPreference log_preference = (ListPreference) findPreference("log_level");
+			log_preference.setEntries(log_levels.values().toArray(new String[]{}));
+			log_preference.setEntryValues(log_levels.keySet().toArray(new String[]{}));
+			
+			log_preference.setDefaultValue(log_levels.get(Integer.toString(Log.INFO)));
+			log_preference.setSummary(log_preference.getEntry());
+			
+			log_preference.setOnPreferenceChangeListener(new OnPreferenceChangeListener(){
+
+				@Override
+				public boolean onPreferenceChange(Preference preference, Object newValue) {
+					
+					String level_name = log_levels.get((String) newValue);
+					((ListPreference) preference).setSummary(level_name);
+					
+					return true;
+				}
+				
+			});
+				
 		}
 		
-		loadHeadersFromResource(R.xml.preference_headers, target);
-    }
+	}
 }

@@ -1,34 +1,21 @@
 package com.atos.petbot;
 
 import java.io.BufferedReader;
-import java.io.DataOutputStream;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.CookieHandler;
 import java.net.CookieManager;
-import java.net.CookieStore;
-import java.net.HttpCookie;
 import java.net.Inet4Address;
 import java.net.InetAddress;
-import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.NetworkInterface;
-import java.net.ServerSocket;
 import java.net.SocketException;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
-import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
-import java.nio.CharBuffer;
-import java.text.SimpleDateFormat;
-import java.util.Calendar;
 import java.util.Enumeration;
-import java.util.List;
 import java.util.Map;
 
 import javax.net.ssl.HttpsURLConnection;
@@ -39,12 +26,12 @@ import petbot.net.stun.StunClient;
 import org.apache.xmlrpc.XmlRpcException;
 import org.apache.xmlrpc.client.XmlRpcClient;
 import org.apache.xmlrpc.client.XmlRpcClientConfigImpl;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import com.atos.audiocontroller.SoundManager;
 import com.atos.petbot.xmlrpc.XmlRpcHttpCookieTransportFactory;
+import com.atos.util.Log;
 
 import android.support.v7.app.ActionBarActivity;
 import android.support.v4.app.DialogFragment;
@@ -53,22 +40,19 @@ import android.text.TextUtils;
 import android.text.format.Time;
 import android.accounts.Account;
 import android.accounts.AccountManager;
-import android.app.AlertDialog;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
-import android.media.SoundPool;
-import android.media.SoundPool.OnLoadCompleteListener;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
-import android.provider.MediaStore;
-import android.util.Log;
+import android.preference.PreferenceManager;
+//import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.SubMenu;
@@ -109,6 +93,10 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
         setContentView(R.layout.activity_main);
         
         PACKAGE_NAME = getApplicationContext().getPackageName();
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        preferences.registerOnSharedPreferenceChangeListener(com.atos.util.Log.preference_listener);
+        String log_level = preferences.getString("log_level", Integer.toString(android.util.Log.INFO));
+        Log.setLogLevel(Integer.parseInt(log_level));
         
         getActionBar().setBackgroundDrawable(new ColorDrawable(Color.parseColor("#80000000")));
         
@@ -152,17 +140,18 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
     }
 
     protected void onResume(){
+    	
     	super.onResume();
-    	Log.i(PACKAGE_NAME, "??? RESUME ???");
     	paused = false;
+    	
     	if(logged_in){
-    		Log.i(PACKAGE_NAME, "ALREADY LOGGED IN");
+    		Log.i(PACKAGE_NAME, "Resuming: already logged in");
     		synchronized (video_lock) {
                 paused = false;
                 video_lock.notifyAll();
             }
     	} else {
-    		Log.i(PACKAGE_NAME, "LOGGING IN");
+    		Log.i(PACKAGE_NAME, "Logging in");
     		login();
     	}
     }
@@ -171,30 +160,6 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
     	
     	Intent login_intent = AccountManager.newChooseAccountIntent(null, null, new String[]{"com.atos.petbot"}, true, null, "", null, null);
     	startActivityForResult(login_intent, ActivityResult.ACCOUNT_CHOOSER.ordinal());
-    	
-    	/*final AccountManager account_manager = AccountManager.get(this);
-    	final Account[] accounts = account_manager.getAccountsByType("com.atos.petbot");
-    	if(accounts.length > 0){
-    		Log.i("asdfasdf", "!!! FOO !!!");
-    		account_manager.getAuthToken(accounts[0], "", null, this, null, null);
-    		new Thread(new Runnable(){
-    			public void run(){
-    				ServerInfo.login(accounts[0].name, account_manager.getPassword(accounts[0]));
-    				runOnUiThread(new Runnable(){
-    					public void run(){
-    						video_thread.start();
-    						getSounds();
-    					}
-    				});
-    			}
-    		}).start();
-    	} else {
-    		Log.i("asdfasdf", "??? BAR ???");
-    		account_manager.addAccount("com.atos.petbot", "", null, null, this, null, null);
-    		video_thread.start();
-    	}
-    	
-    	logged_in = true;*/
     }
 
     
@@ -203,10 +168,7 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 		video_thread = new Thread(new Runnable() {
 			public void run() {
 
-				
-				Time t = new Time();
-				t.setToNow();
-		    	Log.i(PACKAGE_NAME, "start video " + t.format("%M:%S"));
+		    	Log.i(PACKAGE_NAME, "Starting video");
 					
 				StunClient client = new StunClient("petbot.ca", 3478);
 				DiscoveryInfo stun_info = client.bindForRemoteAddressOnly(null);
@@ -214,12 +176,9 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 				// set local and advertised ports for video player
 				video_player.setLocalPort(stun_info.getLocalPort());
 				video_player.setAdvertisedPort(stun_info.getPublicPort());
+				Log.d(PACKAGE_NAME, "STUN local port: " + stun_info.getLocalPort() + ", public port: " + stun_info.getPublicPort());
 				
-				Object[] result = null;
-			
-				t.setToNow();
-		    	Log.i(PACKAGE_NAME, "done stun " + t.format("%M:%S"));
-		    	
+				Object[] result = null;  	
 		    	int retries = 0;
 				
 		    	try{
@@ -235,17 +194,16 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 		                }
 		            }
 					
-					Log.i("asdfasdf", "outside sync");
+					Log.d(PACKAGE_NAME, "Waiting to send stream video request");
 					synchronized(rpc_client){
-						Log.i("asdfasdf", "inside sync");
+						Log.d(PACKAGE_NAME, "Sending stream video request");
 						result = (Object[]) rpc_client.execute("streamVideo", new Object[]{});
 					}
 					
-					t.setToNow();
-			    	Log.i(PACKAGE_NAME, "executed start stream " + t.format("%M:%S"));
-					
 					Map<String,String> info = (Map<String,String>) result[1];
 					String new_stream_uri = info.get("rtsp");
+					
+					// could not get stream location, wait and try again
 					if(new_stream_uri == null || new_stream_uri.isEmpty()){
 						
 						if(retries < 5){
@@ -253,35 +211,30 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 						}
 						int timeout = video_player.isPlaying() ? 5000 : retries * 1000;
 						
-						Log.i(PACKAGE_NAME, "so sleepy");
 						try {
+							Log.i(PACKAGE_NAME, "Could not get stream location, waiting for " + timeout + "ms");
 							Thread.sleep(timeout);
 						} catch (InterruptedException e) {
 							e.printStackTrace();
 						}
 						continue;
 					} else {
+						Log.i(PACKAGE_NAME, "Stream location: " + new_stream_uri);
 						retries = 0;
 					}
 					
 					if (!stream_uri.equals(new_stream_uri)) {
 						
+						Log.i(PACKAGE_NAME, "New stream location, restart video");
 						stream_uri = new_stream_uri;
+						
 						runOnUiThread(new Runnable() {
+							
 							@Override
-							public void run() {
-								
-								Time t = new Time();
-								
-						    	t.setToNow();
-						    	Log.i(PACKAGE_NAME, "ijkstart  " + t.format("%M:%S"));
-								
+							public void run() {	
 								video_player.stopPlayback();
 								video_player.setVideoPath(stream_uri);
 								video_player.start();
-								
-								t.setToNow();
-						    	Log.i(PACKAGE_NAME, "done start " + t.format("%M:%S"));
 							}
 						});
 					}
@@ -315,11 +268,15 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 			public void run() {
 				
 				try {
+					
 					Boolean result = false;
+					Log.i(PACKAGE_NAME, "Sending request to drop treat");
 					synchronized(rpc_client){
 						result = (Boolean) rpc_client.execute("sendCookie", new Object[]{});
 					}
-					Log.i("??? treat ???", " " + result);					
+					
+					Log.i(PACKAGE_NAME, "Treat drop result: " + result);
+					
 				} catch (XmlRpcException e) {
 					e.printStackTrace();
 				}
@@ -328,6 +285,8 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
     }
     
     public void getSounds(){
+    	
+    	Log.i(PACKAGE_NAME, "Retrieving sounds list");
     	new Thread(new Runnable() {
 			public void run() {			
 				try{
@@ -346,8 +305,12 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 	
 					SubMenu sounds_menu = menu.findItem(R.id.action_sound).getSubMenu();
 					JSONArray sounds_list = (new JSONObject(response.toString())).getJSONObject("result").getJSONArray("sounds");
+					
 					for(int index = 0; index < sounds_list.length(); index++){
-						sounds_menu.add(R.id.sounds, Menu.NONE, Menu.NONE, sounds_list.getString(index));
+						
+						String sound_name = sounds_list.getString(index);
+						Log.d(PACKAGE_NAME, "  " + sound_name);
+						sounds_menu.add(R.id.sounds, Menu.NONE, Menu.NONE, sound_name);
 					}
 					
 				} catch(Exception exc){
@@ -362,22 +325,16 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
     	new Thread(new Runnable() {
 			public void run() {
 		    	try {
+		    		
+		    		Log.i(PACKAGE_NAME, "Sending request to get sound: " + sound_name);
 		    		URL server = new URL(ServerInfo.url + "/get_sound/" + sound_name);
 		    		HttpsURLConnection connection = (HttpsURLConnection) server.openConnection();
 		    		connection.setRequestMethod("GET");
 		    		
-		    		/*CookieManager manager = (CookieManager) CookieManager.getDefault();
-					CookieStore cookieJar =  manager.getCookieStore();
-
-					List<HttpCookie> cookies = null;
-					cookies = cookieJar.getCookies();
-
-					connection.setRequestProperty("Cookie", cookies.get(0).toString());*/
 		    		InputStream in_stream = connection.getInputStream();
 		    		byte[] buffer = new byte[32000];
 
 		    		FileOutputStream sound_file = openFileOutput("sound.mp3", Context.MODE_PRIVATE);
-		    		//FileOutputStream sound_file = new FileOutputStream("sound.mp3");
 		    		int read;
 		    		while ((read = in_stream.read(buffer)) != -1) {
 		    			sound_file.write(buffer, 0, read);
@@ -385,7 +342,7 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 		    		sound_file.flush();
 		    		sound_file.close();
 		    		
-					//media_player.setDataSource(sound_file.getFD());
+		    		Log.i(PACKAGE_NAME, "Playing sound");
 		    		media_player.reset();
 		    		media_player.setAudioStreamType(AudioManager.STREAM_MUSIC);
 		    		media_player.setDataSource(getFileStreamPath("sound.mp3").getPath());
@@ -393,9 +350,15 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 					media_player.start();
 					
 					String sound_url = ServerInfo.url + "/get_sound/" + sound_name;
+					
+					Boolean result;
+					Log.d(PACKAGE_NAME, "Waiting to send request to play sound on device");
+					
 					synchronized(rpc_client){
-						Boolean result = (Boolean) rpc_client.execute("playSound", new Object[]{sound_url});
+						Log.i(PACKAGE_NAME, "Sending request to play sound on device");
+						result = (Boolean) rpc_client.execute("playSound", new Object[]{sound_url});
 					}
+					Log.i(PACKAGE_NAME, "Play sound on device result: " + result);
 
 					
 				} catch (IOException exc) {
@@ -437,6 +400,8 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
     		
     		case R.id.action_picture:
     			
+    			Log.i(PACKAGE_NAME, "Saving screenshot");
+    			
     			// grab the video frame and save as bitmap
 				ByteBuffer data = ByteBuffer.wrap(video_player.grabFrame());
 				Bitmap bitmap = Bitmap.createBitmap(video_player.getVideoWidth(), video_player.getVideoHeight(), Bitmap.Config.RGB_565);
@@ -477,8 +442,10 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
     			return true;
     			
     		case R.id.action_settings:
-    			Intent settings = new Intent(this, SettingsActivity.class);
-    			startActivity(settings);
+    			/*Intent settings = new Intent(this, SettingsActivity.class);
+    			startActivity(settings);*/
+    			startActivity(new Intent(this, SettingsActivity.class));
+
     			return true;
     			
     		default:
@@ -505,11 +472,11 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
             Log.i(PACKAGE_NAME, "onInfo: (" + what + "," + extra + ")");
 
             if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_START) {
-                Log.i("asdfasdfasdf", "onInfo: (MEDIA_INFO_BUFFERING_START)");
+                Log.i(PACKAGE_NAME, "onInfo: (MEDIA_INFO_BUFFERING_START)");
                 video_player.stopPlayback();
                 stream_uri = "";
             } else if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_END) {
-                Log.i("asdfasdfasdf", "onInfo: (MEDIA_INFO_BUFFERING_END)");
+                Log.i(PACKAGE_NAME, "onInfo: (MEDIA_INFO_BUFFERING_END)");
             }
 
             return true;

@@ -225,7 +225,10 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 					
 					if (!stream_uri.equals(new_stream_uri)) {
 						
-						Log.i(PACKAGE_NAME, "New stream location, restart video");
+						Log.i(PACKAGE_NAME, "Old stream location: " + stream_uri + "\n" +
+								"New stream location: " + new_stream_uri + "\n" +
+								"Restarting video.");
+
 						stream_uri = new_stream_uri;
 						
 						runOnUiThread(new Runnable() {
@@ -473,8 +476,8 @@ public class MainActivity extends ActionBarActivity implements DeviceNotFoundDia
 
             if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_START) {
                 Log.i(PACKAGE_NAME, "onInfo: (MEDIA_INFO_BUFFERING_START)");
-                video_player.stopPlayback();
-                stream_uri = "";
+                //video_player.stopPlayback();
+                //stream_uri = "";
             } else if (what == IMediaPlayer.MEDIA_INFO_BUFFERING_END) {
                 Log.i(PACKAGE_NAME, "onInfo: (MEDIA_INFO_BUFFERING_END)");
             }
